@@ -1,6 +1,10 @@
 import './App.css';
+import '@reach/dialog/styles.css'
 import {register,login,createRoom} from './authProvider'
 import * as React from 'react'
+import {Dialog} from '@reach/dialog'
+import {Link,Outlet} from 'react-router-dom'
+import {DiscoverRooms} from './screens/DiscoverRooms'
 
 function Characters({characters,setCharacters}) {
   const nameRef = React.useRef(null);
@@ -20,21 +24,55 @@ function Characters({characters,setCharacters}) {
   )
 }
 
+function LoginForm({onSubmit, buttonText,title}) {
+  function handleSubmit(e) {
+    e.preventDefault();
+    const {username,password} = e.target.elements;
+    onSubmit({
+      username:username.value,
+      password:password.value
+    })
+  }
+  return (
+    <div>
+      <h3>{title}</h3>
+      <form onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="username">Username</label>
+        <input id="username"/>
+      </div>
+      <div>
+        <label htmlFor="password">Password</label>
+        <input id="password"/>
+      </div>
+      <button type="submit">{buttonText}</button>
+      </form>
+    </div>
+  )
+}
+
+const IS_OPEN = {NONE:'none',LOGIN:'login',REGISTER:'register',CREATE_ROOM:'create_room'};
+
 function App() {
   const [characters,setCharacters] = React.useState([]);
-  async function handleRegister(e) {
-    e.preventDefault();
-    const {username,password} = e.target.elements;
-    const {username:user} = await register({
-      username:username.value,
-      password:password.value});
+  const [isOpen,setIsOpen] = React.useState(IS_OPEN.NONE);
+  const open = (whichIsOpen) => setIsOpen(whichIsOpen);
+  const close = () => setIsOpen(IS_OPEN.NONE);
+  async function handleRegister({username,password}) {
+    const user = await register({
+      username,
+      password});
   }
-  async function handleLogin(e){
-    e.preventDefault();
-    const {username,password} = e.target.elements;
+  async function handleLogin({username,password}){
     const user = await login({
-      username:username.value,
-      password:password.value});
+      username,
+      password});
+    if( user === null ){
+      //No user with that user name
+    }
+    else{
+
+    }
   }
   async function handleCreateReadingRoom(e) {
     e.preventDefault();
@@ -45,36 +83,39 @@ function App() {
   return (
     <div className="App">
       <div>
-        <h3>Register</h3>
-        <form onSubmit={handleRegister}>
-          <label htmlFor="username">Username</label>
-          <input id="username"/>
-          <label htmlFor="password">Password</label>
-          <input id="password"/>
-          <button type="submit">Submit</button>
-        </form>
+        <button onClick={()=>setIsOpen(IS_OPEN.REGISTER)}>Register</button>
+        <button onClick={()=>setIsOpen(IS_OPEN.LOGIN)}>Login</button>
+        <button onClick={()=>setIsOpen(IS_OPEN.CREATE_ROOM)}>Create Room</button>
       </div>
       <div>
-        <h3>Login</h3>
-        <form onSubmit={handleLogin}>
-          <label htmlFor="username">Username</label>
-          <input id="username"/>
-          <label htmlFor="password">Password</label>
-          <input id="password"/>
-          <button type="submit">Submit</button>
-        </form>
+        <nav style={{margin:'1rem'}}>
+          <Link to="/discover">Discover</Link>
+        </nav>
       </div>
       <div>
-        <h3>Reading Room</h3>
+        <Outlet/>
+      </div>
+      <Dialog aria-label={"Register"} isOpen={isOpen === IS_OPEN.REGISTER} onDismiss={close}>
+        <LoginForm onSubmit={handleRegister} buttonText="Register" title="Register"/>
+      </Dialog>
+      <Dialog aria-label={"Login"} isOpen={isOpen === IS_OPEN.LOGIN} onDismiss={close}>
+        <LoginForm onSubmit={handleLogin} buttonText="Login" title="Login"/>
+      </Dialog>
+      <Dialog aria-label={"Create Room"} isOpen={isOpen === IS_OPEN.CREATE_ROOM} onDismiss={()=>{close();  setCharacters([]);}}>
+        <h3>Create Room</h3>
         <form onSubmit={handleCreateReadingRoom}>
-          <label htmlFor="roomName">Room Name</label>
-          <input id="roomName"/>
-          <label htmlFor="book">Book</label>
-          <input id="book"/>
+          <div>
+            <label htmlFor="roomName">Room Name</label>
+            <input id="roomName"/>
+          </div>
+          <div>
+            <label htmlFor="book">Book</label>
+            <input id="book"/>
+          </div>
           <Characters characters={characters} setCharacters={setCharacters}/>
           <button type="submit">Create Room</button>
         </form>
-      </div>
+      </Dialog>
     </div>
   );
 }

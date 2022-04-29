@@ -16,7 +16,23 @@ export async function clientPost(endpoint,data) {
     //MSW sets response body to JSON object, so call
     //.json to convert to object
     let result = await response.json();
-    console.log(`Client ${result}`);
+    console.log(`Client result: ${result}`);
+    return result;
+  }
+  else{
+    return Promise.reject(new Error('Error in clientPost'))
+  }
+}
+
+export async function clientGet(endpoint) {
+  const response = await window.fetch(`${authURL}/${endpoint}`,{
+    method: 'GET',
+  });
+  if(response.ok){
+    //MSW sets response body to JSON object, so call
+    //.json to convert to object
+    let result = await response.json();
+    console.log(`Client result: ${result}`);
     return result;
   }
   else{

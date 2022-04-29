@@ -27,4 +27,14 @@ export const handlers = [
     console.log(room);
     return res(ctx.status(200),ctx.json(room));
   }),
+  rest.get(`${authURL}/rooms`,(req,res,ctx) => {
+    const name = req.url.searchParams.get('name');
+    const rooms = readingRoomsDB.getRooms(name);
+    return res(ctx.status(200),ctx.json(rooms));
+  }),
+  rest.get(`${authURL}/room`,(req,res,ctx) => {
+    const name = req.url.searchParams.get('name');
+    const rooms = readingRoomsDB.getRoom(name);
+    return res(ctx.status(200),ctx.json(rooms));
+  }),
 ]

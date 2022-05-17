@@ -16,7 +16,9 @@ function create({name, book, characters}) {
 
 function getRoom(name) {
   //return JSON.parse(window.localStorage.getItem(name));
-  return rooms.find(room => room.name === name );
+  return rooms.find(room => {
+    console.log('N: ' + room.name + ' NN: ' + name);
+    return room.name === name; });
 }
 
 function getRooms(nameStartsWith) {

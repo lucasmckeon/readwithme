@@ -8,3 +8,4 @@ const worker = setupWorker(...handlers);
 worker.start({
   onUnhandledRequest:'bypass'
 });
+// worker.start();

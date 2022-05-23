@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import './test/server/devServer';
 import {DiscoverRooms} from './screens/DiscoverRooms'
 import {ReadingRoom} from './screens/ReadingRoom'
 //Browser Router connects our app to the browsers URL
@@ -12,7 +11,6 @@ import {BrowserRouter,Routes,Route} from 'react-router-dom'
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <React.StrictMode>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<App/>}>
@@ -21,7 +19,6 @@ root.render(
         </Route>
       </Routes>
     </BrowserRouter>
-  </React.StrictMode>
 );
 
 // If you want to start measuring performance in your app, pass a function

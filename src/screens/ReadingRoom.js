@@ -4,21 +4,19 @@
 import * as React from 'react'
 import {useParams} from 'react-router-dom'
 import {clientGet} from '../utils/apiClient'
-import {db} from '../utils/firebase'
-import {doc,getDoc} from 'firebase/firestore'
-import {createRoom,joinRoom} from '../utils/webRTC'
+import {hangUp,createOrJoinRoom} from '../utils/webRTC'
+import {getReadingRoom} from '../utils/dbHandler'
 
-function Character({name,becomeCharacter}) {
+function Character({name,becomeCharacter,disabled}) {
   async function handleClick(e) {
     e.preventDefault();
     const stream = await navigator.mediaDevices.getUserMedia(
         {video: true, audio: true});
     becomeCharacter(stream);
-    console.log("Clicked: " + name);
-}
+  }
   return (
-      <li key={name}>
-          <button onClick={handleClick}>Become {name}</button>
+      <li>
+          <button disabled={disabled} onClick = {handleClick}>Become {name}</button>
       </li>
   )
 }
@@ -27,46 +25,50 @@ export function ReadingRoom() {
   const {roomName} = useParams();
   const [room,setRoom] = React.useState(null);
   const [localStream,setLocalStream] = React.useState(null);
-  const [remoteStream,] = React.useState(new MediaStream());
+  const [remoteStream,setRemoteStream] = React.useState(null);
+  const [becameCharacter,setBecameCharacter] = React.useState(false);
   const localVideoRef = React.useRef(null);
   const remoteVideoRef = React.useRef(null);
-  const roomId = '1234';
-  const [roomSnapshot,setRoomSnapshot] = React.useState(null);
+
   React.useEffect(()=>{
     const fetch = async ()=>{
-      const room = await clientGet(`room/?name=${roomName}`);
+      const room = await getReadingRoom(roomName);
+      if(room === null ) {
+        alert(`Room with name ${roomName} doesn't exist`);
+        return;
+      }
       setRoom(room);
     };
-    fetch();
+    fetch().catch(console.error);
+    return ()=>{
+      setBecameCharacter(false);
+      setLocalStream(null);
+      setRemoteStream(null);
+      if(localVideoRef.current){
+        localVideoRef.current.srcObject=null;
+      }
+      if(remoteVideoRef.current){
+        remoteVideoRef.current.srcObject=null;
+      }
+    }
   },[roomName]);
 
   React.useEffect(()=>{
-    async function setSnapshot() {
-      const roomRef = doc(db,'rooms',roomId);
-      const snapshot = await getDoc(roomRef);
-      //console.log("SNAP: " + snapshot);
-      setRoomSnapshot(snapshot);
-    }
-    setSnapshot();
-    remoteVideoRef.current.srcObject=remoteStream;
     return ()=>{
-      //Clean up RTC
+      //console.log(`N: ${roomName} ls ${localStream} rs ${remoteStream}`);
+      hangUp(roomName,localStream,remoteStream);
     }
-  },[]);
+  },[roomName,localStream,remoteStream]);
 
-  async function becomeCharacter(stream) {
+  function becomeCharacter(stream) {
     if(localStream === null){
       setLocalStream(stream);
+      const remoteMediaStream = new MediaStream();
+      setRemoteStream(remoteMediaStream);
+      setBecameCharacter(true);
       localVideoRef.current.srcObject=stream;
-      if( roomSnapshot !== null ){
-        if(!roomSnapshot.exists()){
-          console.log("CREATE ROOM");
-          createRoom(roomId,stream,remoteStream);
-        }
-        else{
-          joinRoom(roomId,stream,remoteStream);
-        }
-      }
+      remoteVideoRef.current.srcObject=remoteMediaStream;
+      createOrJoinRoom(roomName,stream,remoteStream);
     }
   }
 
@@ -79,7 +81,9 @@ export function ReadingRoom() {
         <h3>{room?.name}</h3>
         <h4>{room?.book}</h4>
         <ul style={{listStyleType: 'none'}}>
-          {room?.characters.map(character => <Character name={character} becomeCharacter={becomeCharacter}/>)}
+          {
+            room?.characters.map(character => <Character disabled={ becameCharacter } key={character} name={character} becomeCharacter={becomeCharacter}/>)
+          }
         </ul>
         <video ref={localVideoRef} width={400} height={400} autoPlay/>
         <video ref={remoteVideoRef} width={400} height={400} autoPlay/>

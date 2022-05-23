@@ -2,7 +2,7 @@
  * Created by lucasmckeon on 5/2/22.
  */
 import {db} from './firebase'
-import {doc,getDoc,setDoc,collection,addDoc,onSnapshot,updateDoc} from 'firebase/firestore'
+import {doc,getDoc,setDoc,collection,addDoc,onSnapshot,updateDoc,getDocs,deleteDoc} from 'firebase/firestore'
 const configuration = {
   iceServers: [
     {
@@ -19,7 +19,17 @@ const configuration = {
 };
 let peerConnection = null;
 let unsubscribeCaller = null, unsubscribeCallee = null, unsubscribeRooms = null;
-let roomId;
+
+export async function createOrJoinRoom(roomId,localStream,remoteStream) {
+  const roomRef = doc(db,'rtc-rooms',roomId);
+  const snapshot = await getDoc(roomRef);
+  if(!snapshot.exists()){
+    await createRoom(roomId,localStream,remoteStream);
+  }
+  else{
+    await joinRoom(roomId,localStream,remoteStream);
+  }
+}
 
 export async function createRoom(roomId,localStream,remoteStream) {
   console.log('Create PeerConnection with configuration: ', configuration);
@@ -32,20 +42,13 @@ export async function createRoom(roomId,localStream,remoteStream) {
   });
 
   // Code for collecting ICE candidates below
-  // const callerCandidatesCollection = roomRef.collection('callerCandidates');
-
   peerConnection.addEventListener('icecandidate',async event => {
     if (!event.candidate) {
       console.log('Got final candidate!');
       return;
     }
     console.log('Got candidate: ', event.candidate);
-    await addDoc(collection(db,'rooms',roomId,'callerCandidates'),event.candidate.toJSON());
-    // async function addToCollection(){
-    //   await addDoc(collection(db,'callerCandidates'),event.candidate.toJSON());
-    // }
-    // addToCollection();
-    // callerCandidatesCollection.add(event.candidate.toJSON());
+    await addDoc(collection(db,'rtc-rooms',roomId,'callerCandidates'),event.candidate.toJSON());
   });
   // Code for collecting ICE candidates above
 
@@ -60,14 +63,9 @@ export async function createRoom(roomId,localStream,remoteStream) {
       sdp: offer.sdp,
     },
   };
-  const roomRef = doc(db,'rooms',roomId);
+  const roomRef = doc(db,'rtc-rooms',roomId);
   await setDoc(roomRef,roomWithOffer);
-  // await roomRef.set(roomWithOffer);
-  //*****roomId = roomRef.id;
   console.log(`New room created with SDP offer. Room ID: ${roomRef.id}`);
-  // document.querySelector(
-  //     '#currentRoom').innerText = `Current room is ${roomRef.id} - You are the caller!`;
-  // Code for creating a room above
 
   peerConnection.addEventListener('track', event => {
     console.log('Got remote track:', event.streams[0]);
@@ -75,7 +73,6 @@ export async function createRoom(roomId,localStream,remoteStream) {
       console.log('Add a track to the remoteStream:', track);
       remoteStream.addTrack(track);
     });
-    //document.querySelector('#remoteVideo').srcObject = remoteStream;
   });
 
   // Listening for remote session description below
@@ -90,7 +87,7 @@ export async function createRoom(roomId,localStream,remoteStream) {
   // Listening for remote session description above
 
   // Listen for remote ICE candidates below
-  const calleeRef = collection(db,'rooms',roomId,'calleeCandidates');
+  const calleeRef = collection(db,'rtc-rooms',roomId,'calleeCandidates');
   unsubscribeCallee = onSnapshot(calleeRef,(snapshot)=>{
     snapshot.docChanges().forEach(async (change) => {
       if (change.type === 'added') {
@@ -104,7 +101,7 @@ export async function createRoom(roomId,localStream,remoteStream) {
 }
 
 export async function joinRoom(roomId,localStream,remoteStream) {
-  const roomRef = doc(db,'rooms',roomId);
+  const roomRef = doc(db,'rtc-rooms',roomId);
   const roomSnapshot = await getDoc(roomRef);
   console.log('Got room:', roomSnapshot.exists);
 
@@ -118,7 +115,7 @@ export async function joinRoom(roomId,localStream,remoteStream) {
     });
 
     // Code for collecting ICE candidates below
-    const calleeCandidatesCollection = collection(db,'rooms',roomId,'calleeCandidates');
+    const calleeCandidatesCollection = collection(db,'rtc-rooms',roomId,'calleeCandidates');
     peerConnection.addEventListener('icecandidate', event => {
       if (!event.candidate) {
         console.log('Got final candidate!');
@@ -135,7 +132,6 @@ export async function joinRoom(roomId,localStream,remoteStream) {
         console.log('Add a track to the remoteStream:', track);
         remoteStream.addTrack(track);
       });
-      //document.querySelector('#remoteVideo').srcObject = remoteStream;
     });
 
     // Code for creating SDP answer below
@@ -156,7 +152,7 @@ export async function joinRoom(roomId,localStream,remoteStream) {
     // Code for creating SDP answer above
 
     // Listening for remote ICE candidates below
-    const callerCandidatesCollection = collection(db,'rooms',roomId,'callerCandidates');
+    const callerCandidatesCollection = collection(db,'rtc-rooms',roomId,'callerCandidates');
     unsubscribeCaller = onSnapshot(callerCandidatesCollection,snapshot => {
       snapshot.docChanges().forEach(async change => {
         if (change.type === 'added') {
@@ -170,7 +166,8 @@ export async function joinRoom(roomId,localStream,remoteStream) {
   }
 }
 
-export async function hangUp(localStream,remoteStream){
+export async function hangUp(roomId,localStream,remoteStream){
+  console.log('HANG UP')
   if(unsubscribeCallee) {
     unsubscribeCallee();
   }
@@ -180,12 +177,34 @@ export async function hangUp(localStream,remoteStream){
   if(unsubscribeRooms){
     unsubscribeRooms();
   }
-  localStream.srcObject.getTracks().forEach( track => { track.stop() });
-  if(remoteStream){
-    remoteStream.srcObject.getTracks().forEach( track => { track.stop() });
-  }
+  localStream?.getTracks()?.forEach( track => { console.log('Stop'); track.stop(); });
+  remoteStream?.getTracks()?.forEach( track => { track.stop(); });
   if(peerConnection){
     peerConnection.close();
+  }
+  // if(localStream){
+  //   localStream=null;
+  // }
+  // if(remoteStream){
+  //   remoteStream = new MediaStream();
+  // }
+
+  if(roomId){
+    const calleeCollection = collection(db,'rtc-rooms',roomId,'calleeCandidates');
+    const calleeSnapshot = await getDocs(calleeCollection);
+    calleeSnapshot?.forEach(async (docSnapshot)=>{
+      await deleteDoc(docSnapshot.ref);
+    });
+    const callerCandidatesCollection = collection(db,'rtc-rooms',roomId,'callerCandidates');
+    const callerSnapshot = await getDocs(callerCandidatesCollection);
+    callerSnapshot?.forEach(async (docSnapshot)=>{
+      await deleteDoc(docSnapshot.ref);
+    });
+    const roomRef = doc(db,'rtc-rooms',roomId);
+    const snapshot = await getDoc(roomRef);
+    if(snapshot.exists()){
+      await deleteDoc(roomRef);
+    }
   }
 }
 

@@ -1,10 +1,11 @@
 import './App.css';
 import '@reach/dialog/styles.css'
-import {register,login,createRoom} from './authProvider'
+import {register,login} from './authProvider'
 import * as React from 'react'
 import {Dialog} from '@reach/dialog'
-import {Link,Outlet} from 'react-router-dom'
+import {Link,Outlet,useNavigate} from 'react-router-dom'
 import {DiscoverRooms} from './screens/DiscoverRooms'
+import {createReadingRoom} from './utils/dbHandler'
 
 function Characters({characters,setCharacters}) {
   const nameRef = React.useRef(null);
@@ -18,7 +19,7 @@ function Characters({characters,setCharacters}) {
         <input ref={nameRef} id="characterName" type="text"/>
         <button onClick={handleAddCharacter} type="submit">Add Character</button>
         <ul>
-          {characters.map(character => <li key={character}>{character}</li>)}
+          {characters?.map(character => <li key={character}>{character}</li>)}
         </ul>
       </div>
   )
@@ -56,8 +57,12 @@ const IS_OPEN = {NONE:'none',LOGIN:'login',REGISTER:'register',CREATE_ROOM:'crea
 function App() {
   const [characters,setCharacters] = React.useState([]);
   const [isOpen,setIsOpen] = React.useState(IS_OPEN.NONE);
+  const navigate = useNavigate();
   const open = (whichIsOpen) => setIsOpen(whichIsOpen);
-  const close = () => setIsOpen(IS_OPEN.NONE);
+  const close = () => {
+    setIsOpen(IS_OPEN.NONE);
+    setCharacters([]);
+  };
   async function handleRegister({username,password}) {
     const user = await register({
       username,
@@ -77,9 +82,23 @@ function App() {
   async function handleCreateReadingRoom(e) {
     e.preventDefault();
     const {roomName:name,book} = e.target.elements;
-    const room = await createRoom({name:name.value,book:book.value,characters});
-    console.log(room);
+    const roomName = name.value;
+    const bookName = book.value;
+    function roomExistsCb() {
+      alert(`Room with name ${roomName} already exists. Please choose another name for your room.`);
+    }
+    function roomDoesntExistCb() {
+      alert('There was an error creating your room. Please try again.');
+    }
+    const room = await
+        createReadingRoom(roomName,bookName,characters,{roomExistsCb,roomDoesntExistCb});
+    if( room !== null ) {
+      //Add spinner to after clicking create??
+      close();
+      navigate(`room/${roomName}`);
+    }
   }
+
   return (
     <div className="App">
       <div>

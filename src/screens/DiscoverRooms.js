@@ -2,9 +2,8 @@
  * Created by lucasmckeon on 4/25/22.
  */
 import * as React from 'react'
-import {getRooms} from '../test/data/readingRooms'
 import {Link} from 'react-router-dom'
-import {getReadingRooms} from '../utils/dbHandler'
+import {getBookRooms} from '../utils/dbHandler'
 
 export function DiscoverRooms() {
   const [rooms,setRooms] = React.useState([]);
@@ -12,7 +11,7 @@ export function DiscoverRooms() {
   //Preload all of the books in memory
   React.useEffect( ()=>{
     const fetchRooms = async ()=> {
-      const rooms = await getReadingRooms(query);
+      const rooms = await getBookRooms(query);
       setRooms(rooms);
     };
     fetchRooms().catch(console.error);

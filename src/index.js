@@ -4,7 +4,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import {DiscoverRooms} from './screens/DiscoverRooms'
-import {ReadingRoom} from './screens/ReadingRoom'
+import {BookRoom} from './screens/BookRoom'
 //Browser Router connects our app to the browsers URL
 //Wrap entire app in Router as both unauth and auth users need router support
 import {BrowserRouter,Routes,Route} from 'react-router-dom'
@@ -15,7 +15,7 @@ root.render(
       <Routes>
         <Route path="/" element={<App/>}>
           <Route path="discover" element={<DiscoverRooms/>}/>
-          <Route path="room/:roomName" element={<ReadingRoom/>}/>
+          <Route path="room/:roomName" element={<BookRoom/>}/>
         </Route>
       </Routes>
     </BrowserRouter>

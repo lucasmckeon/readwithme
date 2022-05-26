@@ -5,7 +5,7 @@ import * as React from 'react'
 import {Dialog} from '@reach/dialog'
 import {Link,Outlet,useNavigate} from 'react-router-dom'
 import {DiscoverRooms} from './screens/DiscoverRooms'
-import {createReadingRoom} from './utils/dbHandler'
+import {createBookRoom} from './utils/dbHandler'
 
 function Characters({characters,setCharacters}) {
   const nameRef = React.useRef(null);
@@ -55,13 +55,13 @@ function LoginForm({onSubmit, buttonText,title}) {
 const IS_OPEN = {NONE:'none',LOGIN:'login',REGISTER:'register',CREATE_ROOM:'create_room'};
 
 function App() {
-  const [characters,setCharacters] = React.useState([]);
+  //const [characters,setCharacters] = React.useState([]);
   const [isOpen,setIsOpen] = React.useState(IS_OPEN.NONE);
   const navigate = useNavigate();
   const open = (whichIsOpen) => setIsOpen(whichIsOpen);
   const close = () => {
     setIsOpen(IS_OPEN.NONE);
-    setCharacters([]);
+    //setCharacters([]);//Doing this twice -- look at dialogue onDismiss
   };
   async function handleRegister({username,password}) {
     const user = await register({
@@ -79,26 +79,41 @@ function App() {
 
     }
   }
-  async function handleCreateReadingRoom(e) {
+
+  // async function handleCreateReadingRoom(e) {
+  //   e.preventDefault();
+  //   const {roomName:name,book} = e.target.elements;
+  //   const roomName = name.value;
+  //   const bookName = book.value;
+  //   function roomExistsCb() {
+  //     alert(`Room with name ${roomName} already exists. Please choose another name for your room.`);
+  //   }
+  //   function roomDoesntExistCb() {
+  //     alert('There was an error creating your room. Please try again.');
+  //   }
+  //   const room = await
+  //       createReadingRoom(roomName,bookName,characters,{roomExistsCb,roomDoesntExistCb});
+  //   if( room !== null ) {
+  //     //Add spinner to after clicking create??
+  //     close();
+  //     navigate(`room/${roomName}`);
+  //   }
+  // }
+
+  async function handleCreateBookRoom(e) {
     e.preventDefault();
-    const {roomName:name,book} = e.target.elements;
-    const roomName = name.value;
-    const bookName = book.value;
-    function roomExistsCb() {
-      alert(`Room with name ${roomName} already exists. Please choose another name for your room.`);
-    }
-    function roomDoesntExistCb() {
-      alert('There was an error creating your room. Please try again.');
-    }
-    const room = await
-        createReadingRoom(roomName,bookName,characters,{roomExistsCb,roomDoesntExistCb});
-    if( room !== null ) {
-      //Add spinner to after clicking create??
+    let {roomName,bookName} = e.target.elements;
+    roomName = roomName.value;
+    bookName = bookName.value;
+    try {
+      const room = await createBookRoom(roomName,bookName);
       close();
       navigate(`room/${roomName}`);
     }
+    catch(e){
+      alert(e.message);
+    }
   }
-
   return (
     <div className="App">
       <div>
@@ -120,18 +135,17 @@ function App() {
       <Dialog aria-label={"Login"} isOpen={isOpen === IS_OPEN.LOGIN} onDismiss={close}>
         <LoginForm onSubmit={handleLogin} buttonText="Login" title="Login"/>
       </Dialog>
-      <Dialog aria-label={"Create Room"} isOpen={isOpen === IS_OPEN.CREATE_ROOM} onDismiss={()=>{close();  setCharacters([]);}}>
+      <Dialog aria-label={"Create Room"} isOpen={isOpen === IS_OPEN.CREATE_ROOM} onDismiss={close}>
         <h3>Create Room</h3>
-        <form onSubmit={handleCreateReadingRoom}>
+        <form onSubmit={handleCreateBookRoom}>
           <div>
             <label htmlFor="roomName">Room Name</label>
             <input id="roomName"/>
           </div>
           <div>
-            <label htmlFor="book">Book</label>
-            <input id="book"/>
+            <label htmlFor="bookName">Book</label>
+            <input id="bookName"/>
           </div>
-          <Characters characters={characters} setCharacters={setCharacters}/>
           <button type="submit">Create Room</button>
         </form>
       </Dialog>

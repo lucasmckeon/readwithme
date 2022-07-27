@@ -3,73 +3,56 @@
  */
 import * as React from 'react'
 import {useParams} from 'react-router-dom'
-import {clientGet} from '../utils/apiClient'
-import {hangUp,createOrJoinRoom} from '../utils/webRTC'
-import {getReadingRoom} from '../utils/dbHandler'
-
-function Character({name,becomeCharacter,disabled}) {
-  async function handleClick(e) {
-    e.preventDefault();
-    const stream = await navigator.mediaDevices.getUserMedia(
-        {video: true, audio: true});
-    becomeCharacter(stream);
-  }
-  return (
-      <li>
-          <button disabled={disabled} onClick = {handleClick}>Become {name}</button>
-      </li>
-  )
-}
+import {createBrowserHistory} from 'history'
+import {hangUp,createOrJoinRoom} from '../utils/rtbWebRTC'
 
 export function ReadingRoom() {
-  const {roomName} = useParams();
-  const [room,setRoom] = React.useState(null);
-  const [localStream,setLocalStream] = React.useState(null);
-  const [remoteStream,setRemoteStream] = React.useState(null);
-  const [becameCharacter,setBecameCharacter] = React.useState(false);
+  const {readingRoomName} = useParams();
   const localVideoRef = React.useRef(null);
   const remoteVideoRef = React.useRef(null);
+  const [status,setStatus] = React.useState('not-initialized');
 
   React.useEffect(()=>{
-    const fetch = async ()=>{
-      const room = await getReadingRoom(roomName);
-      if(room === null ) {
-        alert(`Room with name ${roomName} doesn't exist`);
-        return;
-      }
-      setRoom(room);
-    };
-    fetch().catch(console.error);
-    return ()=>{
-      setBecameCharacter(false);
-      setLocalStream(null);
-      setRemoteStream(null);
-      if(localVideoRef.current){
-        localVideoRef.current.srcObject=null;
-      }
-      if(remoteVideoRef.current){
-        remoteVideoRef.current.srcObject=null;
-      }
+    //Trick to be able to reference these values in the cleanup function
+    let localCurrentRefValue = null, remoteCurrentRefValue = null;
+    if(localVideoRef.current){
+      localCurrentRefValue = localVideoRef.current;
     }
-  },[roomName]);
+    if(remoteVideoRef.current){
+      remoteCurrentRefValue = remoteVideoRef.current;
+    }
+    return ()=>{
+      //Hang up needed for when Discover button pressed causing dismount
+      hangUp(readingRoomName,localCurrentRefValue.srcObject,remoteCurrentRefValue.srcObject);
+    }
+  },[]);
 
   React.useEffect(()=>{
-    return ()=>{
-      //console.log(`N: ${roomName} ls ${localStream} rs ${remoteStream}`);
-      hangUp(roomName,localStream,remoteStream);
+    if( status === 'failed' ){
+      alert('Video conferencing failed and room was deleted. Please restart the video conferencing to recreate the room.');
+      setStatus('not-initialized');
     }
-  },[roomName,localStream,remoteStream]);
+  },[status]);
 
-  function becomeCharacter(stream) {
-    if(localStream === null){
-      setLocalStream(stream);
-      const remoteMediaStream = new MediaStream();
-      setRemoteStream(remoteMediaStream);
-      setBecameCharacter(true);
-      localVideoRef.current.srcObject=stream;
-      remoteVideoRef.current.srcObject=remoteMediaStream;
-      createOrJoinRoom(roomName,stream,remoteStream);
-    }
+  function initRoom() {
+    navigator.mediaDevices.getUserMedia(
+        {video: true, audio: true}).then(async localStream=> {
+          localVideoRef.current.srcObject=localStream;
+          remoteVideoRef.current.srcObject=new MediaStream();
+          function failureCallback() {
+            hangUp(readingRoomName,localVideoRef.current.srcObject,remoteVideoRef.current.srcObject);
+            localVideoRef.current.srcObject = null;
+            remoteVideoRef.current.srcObject = null;
+            setStatus('failed');
+          }
+          await createOrJoinRoom(readingRoomName,localVideoRef.current.srcObject,
+              remoteVideoRef.current.srcObject,failureCallback);
+          setStatus('initialized');
+        })
+        .catch(err=>{
+          console.error(err);
+          alert(err);
+        });
   }
 
   /*
@@ -78,15 +61,12 @@ export function ReadingRoom() {
    */
   return (
       <div>
-        <h3>{room?.name}</h3>
-        <h4>{room?.book}</h4>
-        <ul style={{listStyleType: 'none'}}>
-          {
-            room?.characters.map(character => <Character disabled={ becameCharacter } key={character} name={character} becomeCharacter={becomeCharacter}/>)
-          }
-        </ul>
-        <video ref={localVideoRef} width={400} height={400} autoPlay/>
-        <video ref={remoteVideoRef} width={400} height={400} autoPlay/>
+        <h1>{readingRoomName}</h1>
+        { status === 'not-initialized' ? <button onClick={initRoom}>Start video conferencing</button> : null }
+        <div>
+          <video ref={localVideoRef} width={400} height={400} autoPlay/>
+          <video ref={remoteVideoRef} width={400} height={400} autoPlay/>
+        </div>
       </div>
   )
 }

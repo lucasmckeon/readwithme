@@ -1,9 +1,10 @@
 /**
  * Created by lucasmckeon on 5/18/22.
  */
-import {db} from './firebase'
+import {realtimeDatabase,db} from './firebase'
 import {doc,getDoc,setDoc,collection,addDoc,onSnapshot,
-    updateDoc,getDocs,deleteDoc,query,where,runTransaction} from 'firebase/firestore'
+    updateDoc,getDocs,deleteDoc,query,where,runTransaction, Timestamp} from 'firebase/firestore'
+import {ref,child, set, get,query as rtbQuery,orderByKey,startAt,endBefore} from 'firebase/database'
 
 async function createBookRoom(name, bookName ) {
   name = name.trim();
@@ -17,7 +18,7 @@ async function createBookRoom(name, bookName ) {
     name,
     bookName,
     quotes:[],
-    timestamp: Date.now()
+    timestamp: Timestamp.now()
   });
   roomSnapshot = await getDoc(roomRef);
   if(!roomSnapshot.exists()){
@@ -33,6 +34,11 @@ async function getBookRoom(name){
     return null;
   }
   return roomSnapshot.data();
+}
+
+async function doesBookRoomExist(name) {
+  const roomSnapshot = await getDoc(doc(db,'book-rooms',name));
+  return roomSnapshot.exists();
 }
 
 async function getBookRooms(startingText) {
@@ -60,8 +66,11 @@ async function addQuote(contributorName, bookRoomName, text, comment ) {
         contributorName,
         bookRoomName,
         text,
-        comment,
-        timestamp: Date.now()
+        comments:[{
+          comment,
+          timestamp: Timestamp.now()
+        }],
+        timestamp: Timestamp.now()
       };
       const quoteRef = doc(db,'quotes',quote.text);
       const quoteDoc = await transaction.get(quoteRef);
@@ -79,6 +88,22 @@ async function addQuote(contributorName, bookRoomName, text, comment ) {
       return quote;
     });
   } catch(e) {
+    console.error(e);
+    throw e;
+  }
+}
+
+async function updateQuoteComments(quote,comment){
+  const quoteRef = doc(db,'quotes',quote.text);
+  quote.comments.push({comment,timestamp:Timestamp.now()});
+  //TODO test if error occurs what happens
+  try{
+    await updateDoc(quoteRef,{
+      comments:quote.comments
+    });
+    return quote;
+  }
+  catch(e){
     console.error(e);
     throw e;
   }
@@ -102,48 +127,70 @@ async function getQuotes(quoteIds) {
   });
 }
 
+//Unused function TODO DELETE ****
 async function createReadingRoom(name, book, characters,{roomExistsCb,roomDoesntExistCb}) {
   name = name.trim();
   book = book.trim();
-  const roomRef = doc(db,'rooms',name);
-  let roomSnapshot =  await getDoc(roomRef);
-  if(roomSnapshot.exists()){
-    roomExistsCb();
-    return;
-  }
-  await setDoc(doc(db,'rooms',name), {
+  const roomRef = ref(realtimeDatabase,'readingRooms/'+name);
+  // let roomSnapshot =  await getDoc(roomRef);
+  // if(roomSnapshot.exists()){
+  //   roomExistsCb();
+  //   return;
+  // }
+  const result = await set(roomRef, {
     name,
     book,
     characters
   });
-  roomSnapshot = await getDoc(roomRef);
-  if(!roomSnapshot.exists()){
-    roomDoesntExistCb();
-    return;
-  }
-  return roomSnapshot.data();
+  console.log('R: ' + result);
+  // roomSnapshot = await getDoc(roomRef);
+  // if(!roomSnapshot.exists()){
+  //   roomDoesntExistCb();
+  //   return;
+  // }
+  return result;
 }
 
 async function getReadingRoom(name) {
-  const roomRef = doc(db,'rooms',name.trim());
-  let roomSnapshot =  await getDoc(roomRef);
-  return roomSnapshot?.data();
+  const dbRef = ref(realtimeDatabase);
+  return await get(child(dbRef,`readingRooms/${name.trim()}`)).then((snapshot) => {
+    if(snapshot.exists()){
+      return snapshot.val();
+    }
+    return null;
+  }).catch((error)=>{ console.error(error); });
+}
+
+async function doesReadingRoomExist(name) {
+  const dbRef = ref(realtimeDatabase);
+  const room = await get(child(dbRef,`readingRooms/${name.trim()}`)).then((snapshot) => {
+    if(snapshot.exists()){
+      return snapshot.val();
+    }
+    return null;
+  }).catch((error)=>{ console.error(error); });
+  return room !== null;
 }
 
 async function getReadingRooms(startingText) {
   let rooms = [];
-  let roomRef = collection(db,'rooms');
+  let roomRef = ref(realtimeDatabase,'readingRooms');
   let roomsSnapshot;
   if(startingText.trim() === '' ){
-    roomsSnapshot = await getDocs(roomRef);
+    const roomsByKeyRef = rtbQuery(roomRef,orderByKey());
+    roomsSnapshot = await get(roomsByKeyRef).then((snapshot)=>{
+      return snapshot;
+    }).catch((err)=>console.error(err));
   }
   else{
     const endText = incrementEndOfStringCharacterByOne(startingText);
-    const roomsQuery = query(roomRef,where('name','>=',startingText),where('name','<',endText));
-    roomsSnapshot = await getDocs(roomsQuery);
+    const roomsQueryRef = rtbQuery(roomRef,orderByKey(),startAt(startingText),endBefore(endText));
+    roomsSnapshot = await get(roomsQueryRef).then((snapshot)=>{
+      return snapshot;
+    }).catch((err)=>console.error(err));
   }
   roomsSnapshot?.forEach((doc)=>{
-    rooms.push(doc.data());
+    rooms.push({name: doc.key});
   });
   return rooms;
 }
@@ -154,5 +201,10 @@ function incrementEndOfStringCharacterByOne(startingText) {
   return frontString + String.fromCharCode(lastChar.charCodeAt(0) + 1);
 }
 
-export {createReadingRoom,getReadingRoom,getReadingRooms,
-    createBookRoom,getBookRoom, getBookRooms, addQuote, getQuote,getQuotes}
+async function addComment(username, text) {
+
+}
+
+export {createReadingRoom,getReadingRoom,getReadingRooms, doesReadingRoomExist,
+    createBookRoom,getBookRoom, getBookRooms, addQuote, updateQuoteComments,
+    getQuote,getQuotes,addComment}

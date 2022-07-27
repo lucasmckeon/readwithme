@@ -2,7 +2,8 @@
  * Created by lucasmckeon on 5/2/22.
  */
 import {db} from './firebase'
-import {doc,getDoc,setDoc,collection,addDoc,onSnapshot,updateDoc,getDocs,deleteDoc} from 'firebase/firestore'
+import {getReadingRoom} from './dbHandler'
+import {doc,getDoc,setDoc,collection,addDoc,onSnapshot,updateDoc,getDocs,deleteDoc,deleteField} from 'firebase/firestore'
 const configuration = {
   iceServers: [
     {
@@ -19,19 +20,25 @@ const configuration = {
 };
 let peerConnection = null;
 let unsubscribeCaller = null, unsubscribeCallee = null, unsubscribeRooms = null;
+let failureCallback = null;
 
-export async function createOrJoinRoom(roomId,localStream,remoteStream) {
-  const roomRef = doc(db,'rtc-rooms',roomId);
-  const snapshot = await getDoc(roomRef);
-  if(!snapshot.exists()){
+export async function createOrJoinRoom(roomId,localStream,remoteStream,failureCb) {
+  failureCallback = failureCb;
+  const readingRoom = await getReadingRoom(roomId);
+  const offer = readingRoom?.offer;
+  const answer = readingRoom?.answer;
+  if(offer && answer){
+    throw 'Reading room already exists and is full. Please create or join a different reading room.';
+  }
+  if(!readingRoom){
     await createRoom(roomId,localStream,remoteStream);
   }
-  else{
+  else if(offer && !answer){
     await joinRoom(roomId,localStream,remoteStream);
   }
 }
 
-export async function createRoom(roomId,localStream,remoteStream) {
+async function createRoom(roomId,localStream,remoteStream) {
   console.log('Create PeerConnection with configuration: ', configuration);
   peerConnection = new RTCPeerConnection(configuration);
 
@@ -48,7 +55,7 @@ export async function createRoom(roomId,localStream,remoteStream) {
       return;
     }
     console.log('Got candidate: ', event.candidate);
-    await addDoc(collection(db,'rtc-rooms',roomId,'callerCandidates'),event.candidate.toJSON());
+    await addDoc(collection(db,'readingRooms',roomId,'callerCandidates'),event.candidate.toJSON());
   });
   // Code for collecting ICE candidates above
 
@@ -63,9 +70,11 @@ export async function createRoom(roomId,localStream,remoteStream) {
       sdp: offer.sdp,
     },
   };
-  const roomRef = doc(db,'rtc-rooms',roomId);
+  const roomRef = doc(db,'readingRooms',roomId);
   await setDoc(roomRef,roomWithOffer);
   console.log(`New room created with SDP offer. Room ID: ${roomRef.id}`);
+
+  //Set bookRoom.readingRooms.readingRoom.participants to 1
 
   peerConnection.addEventListener('track', event => {
     console.log('Got remote track:', event.streams[0]);
@@ -87,7 +96,7 @@ export async function createRoom(roomId,localStream,remoteStream) {
   // Listening for remote session description above
 
   // Listen for remote ICE candidates below
-  const calleeRef = collection(db,'rtc-rooms',roomId,'calleeCandidates');
+  const calleeRef = collection(db,'readingRooms',roomId,'calleeCandidates');
   unsubscribeCallee = onSnapshot(calleeRef,(snapshot)=>{
     snapshot.docChanges().forEach(async (change) => {
       if (change.type === 'added') {
@@ -100,8 +109,8 @@ export async function createRoom(roomId,localStream,remoteStream) {
   // Listen for remote ICE candidates above
 }
 
-export async function joinRoom(roomId,localStream,remoteStream) {
-  const roomRef = doc(db,'rtc-rooms',roomId);
+async function joinRoom(roomId,localStream,remoteStream) {
+  const roomRef = doc(db,'readingRooms',roomId);
   const roomSnapshot = await getDoc(roomRef);
   console.log('Got room:', roomSnapshot.exists);
 
@@ -115,7 +124,7 @@ export async function joinRoom(roomId,localStream,remoteStream) {
     });
 
     // Code for collecting ICE candidates below
-    const calleeCandidatesCollection = collection(db,'rtc-rooms',roomId,'calleeCandidates');
+    const calleeCandidatesCollection = collection(db,'readingRooms',roomId,'calleeCandidates');
     peerConnection.addEventListener('icecandidate', event => {
       if (!event.candidate) {
         console.log('Got final candidate!');
@@ -152,7 +161,7 @@ export async function joinRoom(roomId,localStream,remoteStream) {
     // Code for creating SDP answer above
 
     // Listening for remote ICE candidates below
-    const callerCandidatesCollection = collection(db,'rtc-rooms',roomId,'callerCandidates');
+    const callerCandidatesCollection = collection(db,'readingRooms',roomId,'callerCandidates');
     unsubscribeCaller = onSnapshot(callerCandidatesCollection,snapshot => {
       snapshot.docChanges().forEach(async change => {
         if (change.type === 'added') {
@@ -167,7 +176,7 @@ export async function joinRoom(roomId,localStream,remoteStream) {
 }
 
 export async function hangUp(roomId,localStream,remoteStream){
-  console.log('HANG UP')
+  console.log('HANG UP');
   if(unsubscribeCallee) {
     unsubscribeCallee();
   }
@@ -177,30 +186,25 @@ export async function hangUp(roomId,localStream,remoteStream){
   if(unsubscribeRooms){
     unsubscribeRooms();
   }
-  localStream?.getTracks()?.forEach( track => { console.log('Stop'); track.stop(); });
+  localStream?.getTracks()?.forEach( track => { track.stop(); });
   remoteStream?.getTracks()?.forEach( track => { track.stop(); });
   if(peerConnection){
     peerConnection.close();
   }
-  // if(localStream){
-  //   localStream=null;
-  // }
-  // if(remoteStream){
-  //   remoteStream = new MediaStream();
-  // }
 
-  if(roomId){
-    const calleeCollection = collection(db,'rtc-rooms',roomId,'calleeCandidates');
+  const isCallee = unsubscribeCallee !== null, isCaller = unsubscribeCaller !== null;
+  if(roomId && (isCallee || isCaller) ){
+    const calleeCollection = collection(db,'readingRooms',roomId,'calleeCandidates');
     const calleeSnapshot = await getDocs(calleeCollection);
     calleeSnapshot?.forEach(async (docSnapshot)=>{
       await deleteDoc(docSnapshot.ref);
     });
-    const callerCandidatesCollection = collection(db,'rtc-rooms',roomId,'callerCandidates');
+    const callerCandidatesCollection = collection(db,'readingRooms',roomId,'callerCandidates');
     const callerSnapshot = await getDocs(callerCandidatesCollection);
     callerSnapshot?.forEach(async (docSnapshot)=>{
       await deleteDoc(docSnapshot.ref);
     });
-    const roomRef = doc(db,'rtc-rooms',roomId);
+    const roomRef = doc(db,'readingRooms',roomId);
     const snapshot = await getDoc(roomRef);
     if(snapshot.exists()){
       await deleteDoc(roomRef);
@@ -216,6 +220,12 @@ function registerPeerConnectionListeners(peerConnection) {
 
   peerConnection.addEventListener('connectionstatechange', () => {
     console.log(`Connection state change: ${peerConnection.connectionState}`);
+    if(peerConnection.connectionState === 'failed'){
+      failureCallback();
+    }
+    //Connection state change: connected - when get this state, set status to full
+    //Set bookRoom.readingRooms.readingRoom.participants to 2
+    //Changes to disconnected when someone hangs up
   });
 
   peerConnection.addEventListener('signalingstatechange', () => {

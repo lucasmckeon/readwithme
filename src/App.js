@@ -5,7 +5,7 @@ import * as React from 'react'
 import {Dialog} from '@reach/dialog'
 import {Link,Outlet,useNavigate} from 'react-router-dom'
 import {DiscoverRooms} from './screens/DiscoverRooms'
-import {createBookRoom} from './utils/dbHandler'
+import {createBookRoom,doesReadingRoomExist} from './utils/dbHandler'
 
 function Characters({characters,setCharacters}) {
   const nameRef = React.useRef(null);
@@ -52,7 +52,8 @@ function LoginForm({onSubmit, buttonText,title}) {
   )
 }
 
-const IS_OPEN = {NONE:'none',LOGIN:'login',REGISTER:'register',CREATE_ROOM:'create_room'};
+const IS_OPEN = {NONE:'none',LOGIN:'login',REGISTER:'register',CREATE_ROOM:'create_room',
+  CREATE_READING_ROOM:'create_reading_room'};
 
 function App() {
   //const [characters,setCharacters] = React.useState([]);
@@ -106,20 +107,36 @@ function App() {
     roomName = roomName.value;
     bookName = bookName.value;
     try {
-      const room = await createBookRoom(roomName,bookName);
+      await createBookRoom(roomName,bookName);
       close();
-      navigate(`room/${roomName}`);
+      navigate(`bookRoom/${roomName}`);
     }
     catch(e){
       alert(e.message);
     }
   }
+  //Create ReadingRoomScreen only. ReadingRoom is created on backend when user activates WebRTC
+  async function handleCreateReadingRoomScreen(e) {
+    e.preventDefault();
+    const {readingRoomName: readingRoomElement} = e.target.elements;
+    const readingRoomName = readingRoomElement.value;
+    //Check to see if the reading room already exists
+    if(!(await doesReadingRoomExist(readingRoomName))){
+      close();
+      navigate(`readingRoom/${readingRoomName}`,{state:{create:true,}});
+    }
+    else{
+      alert('Reading room with name ' + readingRoomName + ' already exists. Please try a different name.');
+    }
+  }
+
   return (
     <div className="App">
       <div>
         <button onClick={()=>setIsOpen(IS_OPEN.REGISTER)}>Register</button>
         <button onClick={()=>setIsOpen(IS_OPEN.LOGIN)}>Login</button>
-        <button onClick={()=>setIsOpen(IS_OPEN.CREATE_ROOM)}>Create Room</button>
+        <button onClick={()=>setIsOpen(IS_OPEN.CREATE_ROOM)}>Create Book Room</button>
+        <button onClick={()=>setIsOpen(IS_OPEN.CREATE_READING_ROOM)}>Create Reading Room</button>
       </div>
       <div>
         <nav style={{margin:'1rem'}}>
@@ -147,6 +164,16 @@ function App() {
             <input id="bookName"/>
           </div>
           <button type="submit">Create Room</button>
+        </form>
+      </Dialog>
+      <Dialog aria-label={"Create Reading Room"} isOpen={isOpen === IS_OPEN.CREATE_READING_ROOM} onDismiss={close}>
+        <h3>Create Reading Room</h3>
+        <form onSubmit={handleCreateReadingRoomScreen}>
+          <div>
+            <label htmlFor="readingRoomName">Reading Room Name</label>
+            <input id="readingRoomName"/>
+          </div>
+          <button type="submit">Create Reading Room</button>
         </form>
       </Dialog>
     </div>

@@ -2,15 +2,52 @@
  * Created by lucasmckeon on 5/22/22.
  */
 import * as React from 'react';
-import {useParams} from 'react-router-dom'
-import {getBookRoom,getQuotes,addQuote} from '../utils/dbHandler'
+import {useParams,useNavigate} from 'react-router-dom'
+import {getBookRoom,getQuotes,addQuote,updateQuoteComments} from '../utils/dbHandler'
 import {Dialog} from '@reach/dialog'
+import {
+    Disclosure,
+    DisclosureButton,
+    DisclosurePanel,
+} from "@reach/disclosure";
+
+function Quotes({quotes,handleUpdateQuoteComments}) {
+  return (
+    <React.Fragment>
+      <ul style={{listStyleType:"none"}}>{
+        quotes.map(quote=>{
+          return (
+              <li key={quote.text}>
+                <Disclosure>
+                  <DisclosureButton>{quote.text}</DisclosureButton>
+                  {quote.comments.map(comment => <DisclosurePanel key={comment.timestamp}>{comment.comment}</DisclosurePanel>)}
+                  <DisclosurePanel>
+                    <form onSubmit={(e)=>{
+                      e.preventDefault();
+                      const commentText = e.target.elements.commentText.value.trim();
+                      if(commentText){
+                        handleUpdateQuoteComments(quote,commentText);
+                      }
+                    }}>
+                      <div>
+                        <textarea id="commentText" rows="4" cols="50"/>
+                        <button style={{display:'block',margin:'auto'}} type="submit">Add Comment</button>
+                      </div>
+                    </form>
+                  </DisclosurePanel>
+                </Disclosure>
+              </li>)})
+        }
+      </ul>
+    </React.Fragment>)
+}
 
 export function BookRoom() {
   const {roomName} = useParams();
   const [bookRoom,setBookRoom] = React.useState(null);
   const [quotes,setQuotes] = React.useState([]);
   const [isOpen,setIsOpen] = React.useState('');
+  const navigate = useNavigate();
   const IS_OPEN = {ADD_QUOTE: 'addQuote', CREATE_READING_ROOM: 'createReadingRoom',
     ACTIVE_READING_ROOMS:'activeReadingRooms',NONE:'none'};
   React.useEffect(()=>{
@@ -39,6 +76,7 @@ export function BookRoom() {
   function close() {
     setIsOpen(IS_OPEN.NONE);
   }
+
   async function handleAddQuote(e) {
     e.preventDefault();
     let {quoteText,commentText} = e.target.elements;
@@ -53,15 +91,20 @@ export function BookRoom() {
       alert(e.message);
     }
   }
-  async function handleCreateReadingRoom(e) {
-    e.preventDefault();
+
+  async function handleUpdateQuoteComments(quote,comment) {
+    try {
+      const updatedQuote = await updateQuoteComments(quote, comment);
+      let quotesDuplicate = [...quotes];
+      quotesDuplicate = quotesDuplicate.map(o => o.timestamp === updatedQuote.timestamp ? updatedQuote : o);
+      setQuotes(quotesDuplicate);
+    }
+    catch(e){
+      console.error(e);
+      alert(e.message);
+    }
   }
 
-  function joinReadingRoom(e) {
-    e.preventDefault();
-  }
-
-  //Cannot read properties of undefined (reading 'map')
   return (
       <div>
         <h1>{roomName}</h1>
@@ -69,20 +112,10 @@ export function BookRoom() {
         {bookRoom ?
             <div>
               <button onClick={()=>setIsOpen(IS_OPEN.ADD_QUOTE)}>Add quote</button>
-              <button onClick={()=>setIsOpen(IS_OPEN.CREATE_READING_ROOM)}>Create Reading Room</button>
-              <button onClick={()=>setIsOpen(IS_OPEN.ACTIVE_READING_ROOMS)}>View Reading Rooms</button>
             </div>
             : null }
         { quotes ?
-            <ul>{
-            quotes.map(quote=>{
-              return (
-              <li key={quote.timestamp}>
-              <div>{quote.text}</div>
-              <div>{quote.comment}</div>
-              </li>)})
-            }
-            </ul> : null }
+            <Quotes quotes={quotes} handleUpdateQuoteComments={handleUpdateQuoteComments}/> : null }
         <Dialog aria-label={"Add quote"} isOpen={isOpen === IS_OPEN.ADD_QUOTE} onDismiss={close}>
           <h3>Add quote</h3>
           <form onSubmit={handleAddQuote}>
@@ -96,26 +129,6 @@ export function BookRoom() {
             </div>
             <button type="submit">Add quote</button>
           </form>
-        </Dialog>
-        <Dialog aria-label={"Create Reading Room"} isOpen={isOpen === IS_OPEN.CREATE_READING_ROOM} onDismiss={close}>
-          <h3>Create Reading Room</h3>
-          <form onSubmit={handleCreateReadingRoom}>
-            <div>
-              <label htmlFor="roomName">Room Name</label>
-              <input id="roomName"/>
-            </div>
-            <button type="submit">Create Room</button>
-          </form>
-        </Dialog>
-        <Dialog aria-label={"Join Reading Room"} isOpen={isOpen === IS_OPEN.ACTIVE_READING_ROOMS} onDismiss={close}>
-          <h3>Active Reading Room</h3>
-          <div>
-            <ul>
-              {bookRoom?.readingRooms?.map(room=>(
-                  <li key={room.name} onClick={joinReadingRoom}>{room.name}</li>
-                ))}
-            </ul>
-          </div>
         </Dialog>
       </div>
   )

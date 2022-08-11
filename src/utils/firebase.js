@@ -4,8 +4,10 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import {getFirestore} from 'firebase/firestore';
-import { getDatabase } from "firebase/database";
+import {getFirestore,connectFirestoreEmulator} from "firebase/firestore";
+import { getDatabase, connectDatabaseEmulator } from "firebase/database";
+import {getAuth,onAuthStateChanged} from "firebase/auth"
+import {useState,useEffect} from 'react'
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -27,4 +29,31 @@ const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db =getFirestore(app);
 const realtimeDatabase = getDatabase(app);
-export {db,realtimeDatabase}
+const auth = getAuth(app);
+if(window.location.hostname === 'localhost'){
+  connectFirestoreEmulator(db,'localhost',8080);
+  connectDatabaseEmulator(realtimeDatabase,'localhost',9000);
+}
+
+function useUser() {
+  const [user,setUser] = useState(null);
+  useEffect(()=>{
+    //Use listener in useEffect so that the listener isn't setup
+    //multiple times
+    const unsubscribe = onAuthStateChanged(auth,(user)=>{
+      if(user){
+        console.log('USER SIGNED IN');
+        setUser(user);
+      }
+      else{
+        setUser(null);
+      }
+    });
+    //Unsubscribe the listener on page unload
+    return ()=>{ unsubscribe(); };
+  },[auth]);
+
+  return user;
+}
+
+export {db,realtimeDatabase,auth,useUser,onAuthStateChanged}

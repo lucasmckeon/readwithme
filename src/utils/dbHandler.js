@@ -36,6 +36,7 @@ async function getBookRoom(name){
   return roomSnapshot.data();
 }
 
+//TODO this can return false if permission is denied
 async function doesBookRoomExist(name) {
   const roomSnapshot = await getDoc(doc(db,'book-rooms',name));
   return roomSnapshot.exists();

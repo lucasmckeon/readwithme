@@ -9,6 +9,7 @@ import {ReadingRoom} from './screens/ReadingRoom'
 //Browser Router connects our app to the browsers URL
 //Wrap entire app in Router as both unauth and auth users need router support
 import {BrowserRouter,Routes,Route} from 'react-router-dom'
+import './utils/presenceSystem'
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

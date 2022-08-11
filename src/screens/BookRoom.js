@@ -10,8 +10,9 @@ import {
     DisclosureButton,
     DisclosurePanel,
 } from "@reach/disclosure";
+import {useUser} from '../utils/firebase';
 
-function Quotes({quotes,handleUpdateQuoteComments}) {
+function Quotes({quotes,handleUpdateQuoteComments,user}) {
   return (
     <React.Fragment>
       <ul style={{listStyleType:"none"}}>{
@@ -31,7 +32,7 @@ function Quotes({quotes,handleUpdateQuoteComments}) {
                     }}>
                       <div>
                         <textarea id="commentText" rows="4" cols="50"/>
-                        <button style={{display:'block',margin:'auto'}} type="submit">Add Comment</button>
+                        <button disabled={user === null} style={{display:'block',margin:'auto'}} type="submit"> {user === null ? 'Sign in to comment' : 'Add Comment'}</button>
                       </div>
                     </form>
                   </DisclosurePanel>
@@ -48,6 +49,7 @@ export function BookRoom() {
   const [quotes,setQuotes] = React.useState([]);
   const [isOpen,setIsOpen] = React.useState('');
   const navigate = useNavigate();
+  const user = useUser();
   const IS_OPEN = {ADD_QUOTE: 'addQuote', CREATE_READING_ROOM: 'createReadingRoom',
     ACTIVE_READING_ROOMS:'activeReadingRooms',NONE:'none'};
   React.useEffect(()=>{
@@ -111,11 +113,11 @@ export function BookRoom() {
         <h3>{bookRoom?.bookName}</h3>
         {bookRoom ?
             <div>
-              <button onClick={()=>setIsOpen(IS_OPEN.ADD_QUOTE)}>Add quote</button>
+              <button disabled={user === null} onClick={()=>setIsOpen(IS_OPEN.ADD_QUOTE)}>{user === null ? 'Sign in to add quote' : 'Add Quote'}</button>
             </div>
             : null }
         { quotes ?
-            <Quotes quotes={quotes} handleUpdateQuoteComments={handleUpdateQuoteComments}/> : null }
+            <Quotes user={user} quotes={quotes} handleUpdateQuoteComments={handleUpdateQuoteComments}/> : null }
         <Dialog aria-label={"Add quote"} isOpen={isOpen === IS_OPEN.ADD_QUOTE} onDismiss={close}>
           <h3>Add quote</h3>
           <form onSubmit={handleAddQuote}>

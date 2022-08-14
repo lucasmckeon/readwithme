@@ -6,7 +6,8 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import {getFirestore,connectFirestoreEmulator} from "firebase/firestore";
 import { getDatabase, connectDatabaseEmulator } from "firebase/database";
-import {getAuth,onAuthStateChanged} from "firebase/auth"
+import {getAuth,onAuthStateChanged, connectAuthEmulator} from "firebase/auth"
+import {getFunctions,connectFunctionsEmulator} from "firebase/functions"
 import {useState,useEffect} from 'react'
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
@@ -30,9 +31,12 @@ const analytics = getAnalytics(app);
 const db =getFirestore(app);
 const realtimeDatabase = getDatabase(app);
 const auth = getAuth(app);
+const functions = getFunctions(app);
 if(window.location.hostname === 'localhost'){
   connectFirestoreEmulator(db,'localhost',8080);
   connectDatabaseEmulator(realtimeDatabase,'localhost',9000);
+  connectAuthEmulator(auth, "http://localhost:9099");
+  connectFunctionsEmulator(functions, "localhost", 5001);
 }
 
 function useUser() {

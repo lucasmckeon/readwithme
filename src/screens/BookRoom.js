@@ -3,16 +3,16 @@
  */
 import * as React from 'react';
 import {useParams,useNavigate} from 'react-router-dom'
-import {getBookRoom,getQuotes,addQuote,updateQuoteComments} from '../utils/dbHandler'
+import {getBookRoom,getQuotes,addQuote,addComment,getUser} from '../utils/dbHandler'
 import {Dialog} from '@reach/dialog'
 import {
     Disclosure,
     DisclosureButton,
     DisclosurePanel,
 } from "@reach/disclosure";
-import {useUser} from '../utils/firebase';
+import {useAuthUser} from '../utils/firebase';
 
-function Quotes({quotes,handleUpdateQuoteComments,user}) {
+function Quotes({quotes,handleUpdateQuoteComments,authUser}) {
   return (
     <React.Fragment>
       <ul style={{listStyleType:"none"}}>{
@@ -22,17 +22,20 @@ function Quotes({quotes,handleUpdateQuoteComments,user}) {
                 <Disclosure>
                   <DisclosureButton>{quote.text}</DisclosureButton>
                   {quote.comments.map(comment => <DisclosurePanel key={comment.timestamp}>{comment.comment}</DisclosurePanel>)}
-                  <DisclosurePanel>
+                  <DisclosurePanel key = {quote.text}>
                     <form onSubmit={(e)=>{
                       e.preventDefault();
                       const commentText = e.target.elements.commentText.value.trim();
                       if(commentText){
                         handleUpdateQuoteComments(quote,commentText);
                       }
+                      else {
+                        alert('Comment must have text.');
+                      }
                     }}>
                       <div>
                         <textarea id="commentText" rows="4" cols="50"/>
-                        <button disabled={user === null} style={{display:'block',margin:'auto'}} type="submit"> {user === null ? 'Sign in to comment' : 'Add Comment'}</button>
+                        <button disabled={authUser === null} style={{display:'block',margin:'auto'}} type="submit"> {authUser === null ? 'Sign in to comment' : 'Add Comment'}</button>
                       </div>
                     </form>
                   </DisclosurePanel>
@@ -49,7 +52,7 @@ export function BookRoom() {
   const [quotes,setQuotes] = React.useState([]);
   const [isOpen,setIsOpen] = React.useState('');
   const navigate = useNavigate();
-  const user = useUser();
+  const authUser = useAuthUser();
   const IS_OPEN = {ADD_QUOTE: 'addQuote', CREATE_READING_ROOM: 'createReadingRoom',
     ACTIVE_READING_ROOMS:'activeReadingRooms',NONE:'none'};
   React.useEffect(()=>{
@@ -85,7 +88,8 @@ export function BookRoom() {
     quoteText=quoteText.value;
     commentText=commentText.value;
     try{
-      const quote = await addQuote('anonymous',roomName,quoteText,commentText);
+      const user = await getUser(authUser.uid);
+      const quote = await addQuote(user.username,user.id,roomName,quoteText,commentText);
       setQuotes([...quotes,quote]);
       close();
     } catch(e){
@@ -96,9 +100,12 @@ export function BookRoom() {
 
   async function handleUpdateQuoteComments(quote,comment) {
     try {
-      const updatedQuote = await updateQuoteComments(quote, comment);
+      //const updatedQuote = await updateQuoteComments(quote, comment);
+      console.log('Q: ' + JSON.stringify(quote));
+      const updatedComment = await addComment(authUser.uid,quote,comment);
+      quote.comments.push(updatedComment);
       let quotesDuplicate = [...quotes];
-      quotesDuplicate = quotesDuplicate.map(o => o.timestamp === updatedQuote.timestamp ? updatedQuote : o);
+      quotesDuplicate = quotesDuplicate.map(o => o.timestamp === quote.timestamp ? quote : o);
       setQuotes(quotesDuplicate);
     }
     catch(e){
@@ -113,11 +120,11 @@ export function BookRoom() {
         <h3>{bookRoom?.bookName}</h3>
         {bookRoom ?
             <div>
-              <button disabled={user === null} onClick={()=>setIsOpen(IS_OPEN.ADD_QUOTE)}>{user === null ? 'Sign in to add quote' : 'Add Quote'}</button>
+              <button disabled={authUser === null} onClick={()=>setIsOpen(IS_OPEN.ADD_QUOTE)}>{authUser === null ? 'Sign in to add quote' : 'Add Quote'}</button>
             </div>
             : null }
         { quotes ?
-            <Quotes user={user} quotes={quotes} handleUpdateQuoteComments={handleUpdateQuoteComments}/> : null }
+            <Quotes authUser={authUser} quotes={quotes} handleUpdateQuoteComments={handleUpdateQuoteComments}/> : null }
         <Dialog aria-label={"Add quote"} isOpen={isOpen === IS_OPEN.ADD_QUOTE} onDismiss={close}>
           <h3>Add quote</h3>
           <form onSubmit={handleAddQuote}>

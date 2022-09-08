@@ -6,6 +6,15 @@ import {doc,getDoc,setDoc,collection,addDoc,onSnapshot,
     updateDoc,getDocs,deleteDoc,query,where,runTransaction, Timestamp} from 'firebase/firestore'
 import {ref,child, set, get,query as rtbQuery,orderByKey,startAt,endBefore} from 'firebase/database'
 
+async function getUser(id){
+  const userRef = doc(db,'users',id);
+  const user = await getDoc(userRef);
+  if(!user.exists()){
+    return null;
+  }
+  return {id:user.id,...user.data()};
+}
+
 async function createBookRoom(name, bookName ) {
   name = name.trim();
   bookName = bookName.trim();
@@ -60,32 +69,58 @@ async function getBookRooms(startingText) {
   return rooms;
 }
 
-async function addQuote(contributorName, bookRoomName, text, comment ) {
+async function addQuote(contributer, userId, bookRoomName, text, comment ) {
   try{
+    const userQuotesRef = doc(db,'users',userId,'book-quotes',bookRoomName);
+    let userQuotesDoc = await getDoc(userQuotesRef);
+    if(!userQuotesDoc.exists()){
+      await setDoc(userQuotesRef,{quotes:[]});
+      userQuotesDoc = await getDoc(userQuotesRef);
+      if(!userQuotesDoc.exists()){
+        throw 'Retrieving user quotes failed';
+      }
+    }
+
     return await runTransaction(db,async(transaction)=>{
-      const quote = {
-        contributorName,
-        bookRoomName,
-        text,
-        comments:[{
+      const quoteRef = doc(db,'quotes',generateFirestoreId());
+      const comments = [];
+      if(comment && comment.trim()!==''){
+        comments.push({
           comment,
           timestamp: Timestamp.now()
-        }],
+        });
+      }
+      const quote = {
+        contributer: {
+          //Add id because idk if we are going to expose username -> userId database collection
+          id:userId,
+          name: contributer
+        },
+        bookRoomName,
+        text,
+        comments,
         timestamp: Timestamp.now()
       };
-      const quoteRef = doc(db,'quotes',quote.text);
-      const quoteDoc = await transaction.get(quoteRef);
-      if(quoteDoc.exists()){
-        throw "Quote with text " + quote.text + " already exists.";
-      }
       const bookRoomRef = doc(db,'book-rooms',bookRoomName);
       const bookRoomDoc = await transaction.get(bookRoomRef);
       if(!bookRoomDoc.exists()){
         throw "Retrieving book room failed";
       }
-      const newQuotes = [...bookRoomDoc.data().quotes,quote.text];
-      transaction.update(bookRoomRef,{quotes:newQuotes});
-      transaction.set(doc(db,'quotes',quote.text),quote);
+      if(comment && comment.trim() !== ''){
+        const userRef = doc(db,'users',userId);
+        const userDoc = await transaction.get(userRef);
+        if(!userDoc){
+          throw 'Retrieving user failed';
+        }
+        const userComments = userDoc.data().comments ? [...userDoc.data().comments,{quoteId: quote.id,comment}] : [{quoteId: quote.id,comment}];
+        await transaction.update(userRef,{comments:userComments});
+      }
+      await transaction.set(quoteRef,quote);
+      const newBookQuotes = [...bookRoomDoc.data().quotes,quoteRef.id];
+      const newUserQuotes = [...userQuotesDoc.data().quotes,quoteRef.id];
+
+      await transaction.update(bookRoomRef,{quotes:newBookQuotes});
+      await transaction.update(userQuotesRef,{quotes:newUserQuotes});
       return quote;
     });
   } catch(e) {
@@ -94,15 +129,26 @@ async function addQuote(contributorName, bookRoomName, text, comment ) {
   }
 }
 
-async function updateQuoteComments(quote,comment){
-  const quoteRef = doc(db,'quotes',quote.text);
-  quote.comments.push({comment,timestamp:Timestamp.now()});
+async function addComment(userId,quote,comment) {
+  const quoteRef = doc(db,'quotes',quote.id);
+  //TODO Does this update the react state ??
+  const quoteComments = quote.comments;
+  quoteComments.push({comment,timestamp:Timestamp.now()});
   //TODO test if error occurs what happens
   try{
-    await updateDoc(quoteRef,{
-      comments:quote.comments
-    });
-    return quote;
+    return await runTransaction(db,async(transaction)=>{
+      const userRef = doc(db,'users',userId);
+      const userDoc = await transaction.get(userRef);
+      if(!userDoc){
+        throw 'Retrieving user failed';
+      }
+      const userComments = userDoc.data().comments ? [...userDoc.data().comments,{quoteId: quote.id,comment}] : [{quoteId: quote.id,comment}];
+      await transaction.update(quoteRef,{
+        comments:quoteComments
+      });
+      await transaction.update(userRef,{comments:userComments});
+      return comment;
+    })
   }
   catch(e){
     console.error(e);
@@ -116,40 +162,16 @@ async function getQuote(quoteId) {
   if(!roomSnapshot.exists()){
     throw new Error('There was an error retrieving a quote. Please try again.');
   }
-  return roomSnapshot.data();
+  return {id:roomSnapshot.id,...roomSnapshot.data()};
 }
 
 async function getQuotes(quoteIds) {
   const idRefs = quoteIds?.map(quoteId => getDoc(doc(db,'quotes',quoteId)));
-  return Promise.all(idRefs).then(quoteSnapshots=> quoteSnapshots.map(snapshot => snapshot.data())
+  return Promise.all(idRefs).then(quoteSnapshots=> quoteSnapshots.map(snapshot => ({id:snapshot.id, ...snapshot.data()}) )
   ).catch((e)=> {
     console.error(e);
     console.log('Get quotes error :'+e.message);
   });
-}
-
-//Unused function TODO DELETE ****
-async function createReadingRoom(name, book, characters,{roomExistsCb,roomDoesntExistCb}) {
-  name = name.trim();
-  book = book.trim();
-  const roomRef = ref(realtimeDatabase,'readingRooms/'+name);
-  // let roomSnapshot =  await getDoc(roomRef);
-  // if(roomSnapshot.exists()){
-  //   roomExistsCb();
-  //   return;
-  // }
-  const result = await set(roomRef, {
-    name,
-    book,
-    characters
-  });
-  console.log('R: ' + result);
-  // roomSnapshot = await getDoc(roomRef);
-  // if(!roomSnapshot.exists()){
-  //   roomDoesntExistCb();
-  //   return;
-  // }
-  return result;
 }
 
 async function getReadingRoom(name) {
@@ -202,10 +224,17 @@ function incrementEndOfStringCharacterByOne(startingText) {
   return frontString + String.fromCharCode(lastChar.charCodeAt(0) + 1);
 }
 
-async function addComment(username, text) {
-
+//credit https://stackoverflow.com/a/55674368
+function generateFirestoreId(){
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let autoId = '';
+  for (let i = 0; i < 20; i++) {
+    autoId += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  //assert(autoId.length === 20, 'Invalid auto ID: ' + autoId);
+  return autoId;
 }
 
-export {createReadingRoom,getReadingRoom,getReadingRooms, doesReadingRoomExist,
-    createBookRoom,getBookRoom, getBookRooms, addQuote, updateQuoteComments,
-    getQuote,getQuotes,addComment}
+export {getReadingRoom,getReadingRooms, doesReadingRoomExist,
+    createBookRoom,getBookRoom, getBookRooms, addQuote,
+    getQuote,getQuotes,addComment,getUser}

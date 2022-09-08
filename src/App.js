@@ -4,12 +4,13 @@ import * as React from 'react'
 import {Dialog} from '@reach/dialog'
 import {Link,Outlet,useNavigate} from 'react-router-dom'
 import {DiscoverRooms} from './screens/DiscoverRooms'
-import {createBookRoom,doesReadingRoomExist} from './utils/dbHandler'
-import {auth} from './utils/firebase'
+import {createBookRoom,doesReadingRoomExist,getUser} from './utils/dbHandler'
+import {auth,useAuthUser} from './utils/firebase'
 import * as firebaseui from 'firebaseui'
 import {EmailAuthProvider,signOut} from "firebase/auth"
+import { getFunctions, httpsCallable } from "firebase/functions";
 
-function LoginForm({close}) {
+function LoginForm({handleSuccessfulSignIn}) {
   //const firebaseui = React.lazy(() => import('firebaseui'));
   const firebaseAuthUI = firebaseui.auth.AuthUI.getInstance() ||
       new firebaseui.auth.AuthUI(auth);
@@ -19,8 +20,8 @@ function LoginForm({close}) {
       signInSuccessWithAuthResult: function(authResult, redirectUrl) {
         // User successfully signed in.
         // Return type determines whether we continue the redirect automatically
-        // or whether we leave that to developer to handle.
-        close();
+        // or whether we leave that to the developer to handle.
+        handleSuccessfulSignIn(authResult.user);
         return false;
       },
       uiShown: function() {
@@ -58,16 +59,36 @@ function LoginForm({close}) {
   )
 }
 
-const IS_OPEN = {NONE:'none',LOGIN:'login',REGISTER:'register',CREATE_ROOM:'create_room',
-  CREATE_READING_ROOM:'create_reading_room'};
+const IS_OPEN = {NONE:'none',LOGIN:'login',CREATE_ROOM:'create_room',
+  CREATE_READING_ROOM:'create_reading_room',CHOOSE_USERNAME:'choose_username'};
 
 function App() {
   const [isOpen,setIsOpen] = React.useState(IS_OPEN.NONE);
+  const [usernameChosen, setUsernameChosen] = React.useState(false);
   const navigate = useNavigate();
   const open = (whichIsOpen) => setIsOpen(whichIsOpen);
   const close = () => {
     setIsOpen(IS_OPEN.NONE);
   };
+  const authUser = useAuthUser();
+  React.useEffect(()=>{
+    if(authUser){
+      const shouldWeShowChooseUsername = async ()=>{
+        if(await doesUserHaveUsername(authUser) === false ) {
+          setIsOpen(IS_OPEN.CHOOSE_USERNAME);
+        }
+      };
+      shouldWeShowChooseUsername();
+    }
+  },[authUser]);
+
+  async function doesUserHaveUsername(authUser) {
+    const u = await getUser(authUser.uid);
+    if(u === null || u.username === null){
+      return false;
+    }
+    return true;
+  }
 
   async function handleCreateBookRoom(e) {
     e.preventDefault();
@@ -98,6 +119,36 @@ function App() {
     }
   }
 
+  function handleChooseUsername(e) {
+    e.preventDefault();
+    const {chooseUsername} = e.target.elements;
+    const username = chooseUsername.value;
+    const functions = getFunctions();
+    const updateUsername = httpsCallable(functions, 'onUsernameUpdated');
+    updateUsername({ text: username })
+        .then((result) => {
+          // Read result of the Cloud Function.
+          /** @type {any} */
+          const data = result.data;
+          if( data.success ){
+            alert(`Username: ${username} successfully chosen!`);
+            close();
+          } else{
+            alert(`Error occurred: ${data.message}`);
+          }
+        }).catch(e=>{
+          console.error(e);
+          alert('An error occurred while choosing a username' );
+    });
+  }
+
+  async function handleSuccessfulSignIn(authUser) {
+    close();
+    if(await doesUserHaveUsername(authUser) === false){
+      setIsOpen(IS_OPEN.CHOOSE_USERNAME);
+    }
+  }
+
   function handleSignOut(e) {
     e.preventDefault();
     signOut(auth).then(()=>{
@@ -110,7 +161,7 @@ function App() {
   return (
     <div className="App">
       <div>
-        <button onClick={()=>setIsOpen(IS_OPEN.REGISTER)}>Register</button>
+        <button onClick={()=>setIsOpen(IS_OPEN.LOGIN)}>Register</button>
         <button onClick={()=>setIsOpen(IS_OPEN.LOGIN)}>Login</button>
         <button onClick={()=>setIsOpen(IS_OPEN.CREATE_ROOM)}>Create Book Room</button>
         <button onClick={()=>setIsOpen(IS_OPEN.CREATE_READING_ROOM)}>Create Reading Room</button>
@@ -124,17 +175,21 @@ function App() {
       <div>
         <Outlet/>
       </div>
-      <Dialog aria-label={"Register"} isOpen={isOpen === IS_OPEN.REGISTER} onDismiss={close}>
-        <button className="close-button" onClick={close}>
-          <span aria-hidden>×</span>
-        </button>
-        <LoginForm />
-      </Dialog>
       <Dialog aria-label={"Login"} isOpen={isOpen === IS_OPEN.LOGIN} onDismiss={close}>
         <button className="close-button" onClick={close}>
           <span aria-hidden>×</span>
         </button>
-        <LoginForm close = {close}/>
+        <LoginForm handleSuccessfulSignIn = {handleSuccessfulSignIn}/>
+      </Dialog>
+      <Dialog aria-label={"Choose username"} isOpen={isOpen === IS_OPEN.CHOOSE_USERNAME} onDismiss={()=>setIsOpen(IS_OPEN.CHOOSE_USERNAME)}>
+        <h3>Choose Username</h3>
+        <form onSubmit={handleChooseUsername}>
+          <div>
+            <label htmlFor="chooseUsername">Choose Username:</label>
+            <input id="chooseUsername"/>
+          </div>
+          <button type="submit">Choose Username</button>
+        </form>
       </Dialog>
       <Dialog aria-label={"Create Room"} isOpen={isOpen === IS_OPEN.CREATE_ROOM} onDismiss={close}>
         <h3>Create Room</h3>

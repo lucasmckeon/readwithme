@@ -6,7 +6,8 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import {getFirestore,connectFirestoreEmulator} from "firebase/firestore";
 import { getDatabase, connectDatabaseEmulator } from "firebase/database";
-import {getAuth,onAuthStateChanged} from "firebase/auth"
+import {getAuth,onAuthStateChanged, connectAuthEmulator} from "firebase/auth"
+import {getFunctions,connectFunctionsEmulator} from "firebase/functions"
 import {useState,useEffect} from 'react'
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
@@ -30,30 +31,38 @@ const analytics = getAnalytics(app);
 const db =getFirestore(app);
 const realtimeDatabase = getDatabase(app);
 const auth = getAuth(app);
+const functions = getFunctions(app);
 if(window.location.hostname === 'localhost'){
   connectFirestoreEmulator(db,'localhost',8080);
   connectDatabaseEmulator(realtimeDatabase,'localhost',9000);
+  connectAuthEmulator(auth, "http://localhost:9099");
+  connectFunctionsEmulator(functions, "localhost", 5001);
 }
-
-function useUser() {
-  const [user,setUser] = useState(null);
+let initialCall = false;
+function useAuthUser() {
+  const [authUser,setAuthUser] = useState(null);
   useEffect(()=>{
     //Use listener in useEffect so that the listener isn't setup
     //multiple times
-    const unsubscribe = onAuthStateChanged(auth,(user)=>{
-      if(user){
+    const unsubscribe = onAuthStateChanged(auth,(authUser)=>{
+      //Registration call: skip the first call with a flag. https://stackoverflow.com/questions/37673616/firebase-android-onauthstatechanged-called-twice?noredirect=1&lq=1
+      if(initialCall === false ){
+        initialCall = true;
+        return;
+      }
+      if(authUser){
         console.log('USER SIGNED IN');
-        setUser(user);
+        setAuthUser(authUser);
       }
       else{
-        setUser(null);
+        setAuthUser(null);
       }
     });
     //Unsubscribe the listener on page unload
     return ()=>{ unsubscribe(); };
   },[auth]);
 
-  return user;
+  return authUser;
 }
 
-export {db,realtimeDatabase,auth,useUser,onAuthStateChanged}
+export {db,realtimeDatabase,auth,useAuthUser,onAuthStateChanged}
